@@ -31,7 +31,7 @@ public sealed class LauncherHotUpdateServiceTests
             var progress = new CaptureProgress();
 
             var result = await service.PrepareHotUpdateAsync(
-                CreateUpdateInfo(packageBytes.Length),
+                CreateUpdateInfo(packageBytes),
                 currentExecutablePath,
                 progress);
 
@@ -70,7 +70,7 @@ public sealed class LauncherHotUpdateServiceTests
             var service = new LauncherHotUpdateService(httpClient);
 
             var result = await service.PrepareHotUpdateAsync(
-                CreateUpdateInfo(packageBytes.Length),
+                CreateUpdateInfo(packageBytes),
                 currentExecutablePath);
 
             Assert.False(result.Success);
@@ -83,14 +83,15 @@ public sealed class LauncherHotUpdateServiceTests
         }
     }
 
-    private static CpaUpdateInfo CreateUpdateInfo(long assetSize)
+    private static CpaUpdateInfo CreateUpdateInfo(byte[] package)
     {
         return new CpaUpdateInfo
         {
             TagName = "v0.3.0",
             NewVersion = new Version(0, 3, 0),
             AssetDownloadUrl = "https://example.com/downloads/CPALauncher-win-x64-self-contained.zip",
-            AssetSize = assetSize,
+            AssetSize = package.Length,
+            ExpectedSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(package)),
             ReleaseUrl = "https://example.com/releases/v0.3.0",
         };
     }

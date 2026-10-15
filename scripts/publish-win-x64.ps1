@@ -93,6 +93,25 @@ Compress-Archive -Path (Join-Path $PackageDir "*") -DestinationPath $ZipPath -Fo
 
 $LegacyZipPath = Join-Path (Split-Path $ZipPath) "CPALauncher-$Runtime-$ModeName.zip"
 Copy-Item -LiteralPath $ZipPath -Destination $LegacyZipPath -Force
+# Versions through v0.3.0 require the legacy executable name inside the ZIP too.
+$LegacyArchive = [IO.Compression.ZipFile]::Open($LegacyZipPath, [IO.Compression.ZipArchiveMode]::Update)
+try {
+    $OldEntry = $LegacyArchive.GetEntry('CPA Dock.exe')
+    $NewEntry = $LegacyArchive.CreateEntry('CPALauncher.exe')
+    $InputStream = $OldEntry.Open()
+    $OutputStream = $NewEntry.Open()
+    try { $InputStream.CopyTo($OutputStream) }
+    finally { $InputStream.Dispose(); $OutputStream.Dispose() }
+    $OldEntry.Delete()
+    $ReadmeEntry = $LegacyArchive.GetEntry('README.txt')
+    $Reader = [IO.StreamReader]::new($ReadmeEntry.Open())
+    try { $LegacyReadme = $Reader.ReadToEnd().Replace('CPA Dock.exe', 'CPALauncher.exe') }
+    finally { $Reader.Dispose() }
+    $ReadmeEntry.Delete()
+    $Writer = [IO.StreamWriter]::new($LegacyArchive.CreateEntry('README.txt').Open(), [Text.UTF8Encoding]::new($true))
+    try { $Writer.Write($LegacyReadme) } finally { $Writer.Dispose() }
+} finally { $LegacyArchive.Dispose() }
+& (Join-Path $PSScriptRoot 'verify-package.ps1') -ZipPath $LegacyZipPath -ExecutablePath $PublishedExe
 $Hashes = @($ZipPath, $LegacyZipPath) | ForEach-Object {
     $Hash = (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()
     "$Hash  $([IO.Path]::GetFileName($_))"

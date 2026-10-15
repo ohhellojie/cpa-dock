@@ -52,7 +52,7 @@ public sealed class CpaLifecycleTests : IDisposable
         using var bytes = new MemoryStream();
         using (var zip = new ZipArchive(bytes, ZipArchiveMode.Create, true)) zip.CreateEntryFromFile(replacement, "cli-proxy-api.exe");
         using var download = new HttpClient(new Handler(bytes.ToArray()));
-        var info = new CpaUpdateInfo { TagName = "v2", NewVersion = new Version(2, 0), AssetDownloadUrl = "https://example.invalid/package.zip", ReleaseUrl = "https://example.invalid/release", AssetSize = bytes.Length };
+        var info = new CpaUpdateInfo { TagName = "v2", NewVersion = new Version(2, 0), AssetDownloadUrl = "https://example.invalid/package.zip", ReleaseUrl = "https://example.invalid/release", ExpectedSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes.ToArray())), AssetSize = bytes.Length };
         var prepared = await new CpaUpdateService(download).PrepareUpdateAsync(info, exe, "v1", running);
         Assert.True(prepared.Success, prepared.Message);
         Assert.Equal(originalPid, manager.ManagedProcessId); // Preparation never stops the original service.

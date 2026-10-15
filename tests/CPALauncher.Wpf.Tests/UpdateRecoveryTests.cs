@@ -31,7 +31,7 @@ public sealed class UpdateRecoveryTests : IDisposable
         File.WriteAllText(exe, "old");
         using var locked = File.Open(exe, FileMode.Open, FileAccess.Read, FileShare.Read);
         using var client = Client(Zip(("cli-proxy-api.exe", "new")));
-        var result = await new CpaUpdateService(client).ApplyUpdateAsync(Info, exe);
+        var result = await new CpaUpdateService(client).ApplyUpdateAsync(Info(Zip((Path.GetFileName(exe), "new"))), exe);
         Assert.False(result.Success);
         Assert.Equal("old", File.ReadAllText(exe));
         Assert.Equal(3, Directory.GetFiles(Install).Length);
@@ -65,8 +65,8 @@ public sealed class UpdateRecoveryTests : IDisposable
         var zip = Zip((Path.GetFileName(exe), "new"));
         using var client = Client(zip, zip.Length + 50);
         var success = product == "cpa"
-            ? (await new CpaUpdateService(client).ApplyUpdateAsync(Info, exe)).Success
-            : (await new LauncherHotUpdateService(client).PrepareHotUpdateAsync(Info, exe)).Success;
+            ? (await new CpaUpdateService(client).ApplyUpdateAsync(Info(Zip((Path.GetFileName(exe), "new"))), exe)).Success
+            : (await new LauncherHotUpdateService(client).PrepareHotUpdateAsync(Info(Zip((Path.GetFileName(exe), "new"))), exe)).Success;
         Assert.False(success);
         Assert.Equal("old", File.ReadAllText(exe));
         AssertUserFiles();
@@ -96,10 +96,11 @@ public sealed class UpdateRecoveryTests : IDisposable
             _ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Zip((Path.GetFileName(exe), "new"))) }
         }));
         using var cancellation = new CancellationTokenSource();
+        var faultBytes = fault == "corrupt" ? new byte[] { 0, 1, 2, 3 } : fault == "missing" ? Zip(("README.txt", "notes")) : Zip((Path.GetFileName(exe), "new"));
         var progress = new InlineProgress(_ => { if (fault == "cancel") cancellation.Cancel(); });
         var success = product == "cpa"
-            ? (await new CpaUpdateService(client).ApplyUpdateAsync(Info, exe, progress, cancellation.Token)).Success
-            : (await new LauncherHotUpdateService(client).PrepareHotUpdateAsync(Info, exe, progress, cancellation.Token)).Success;
+            ? (await new CpaUpdateService(client).ApplyUpdateAsync(Info(faultBytes), exe, progress, cancellation.Token)).Success
+            : (await new LauncherHotUpdateService(client).PrepareHotUpdateAsync(Info(faultBytes), exe, progress, cancellation.Token)).Success;
         Assert.False(success);
         Assert.Equal("old", File.ReadAllText(exe));
         Assert.Equal(3, Directory.GetFiles(Install).Length);
@@ -108,13 +109,13 @@ public sealed class UpdateRecoveryTests : IDisposable
         using var retry = Client(Zip((Path.GetFileName(exe), "new")));
         if (product == "cpa")
         {
-            var result = await new CpaUpdateService(retry).ApplyUpdateAsync(Info, exe);
+            var result = await new CpaUpdateService(retry).ApplyUpdateAsync(Info(Zip((Path.GetFileName(exe), "new"))), exe);
             Assert.True(result.Success, result.Message);
             Assert.Equal("new", File.ReadAllText(exe));
         }
         else
         {
-            var result = await new LauncherHotUpdateService(retry).PrepareHotUpdateAsync(Info, exe);
+            var result = await new LauncherHotUpdateService(retry).PrepareHotUpdateAsync(Info(Zip((Path.GetFileName(exe), "new"))), exe);
             Assert.True(result.Success, result.Message);
             Directory.Delete(Path.GetDirectoryName(result.Package!.ApplyScriptPath)!, true);
         }
@@ -263,8 +264,8 @@ public sealed class UpdateRecoveryTests : IDisposable
         {
             new DirectoryInfo(Install).SetAccessControl(denied);
             var success = product == "cpa"
-                ? (await new CpaUpdateService(client).ApplyUpdateAsync(Info, exe)).Success
-                : (await new LauncherHotUpdateService(client).PrepareHotUpdateAsync(Info, exe)).Success;
+                ? (await new CpaUpdateService(client).ApplyUpdateAsync(Info(Zip((Path.GetFileName(exe), "new"))), exe)).Success
+                : (await new LauncherHotUpdateService(client).PrepareHotUpdateAsync(Info(Zip((Path.GetFileName(exe), "new"))), exe)).Success;
             Assert.False(success);
             Assert.Equal("old", File.ReadAllText(exe));
             Assert.Equal(3, Directory.GetFiles(Install).Length);
@@ -284,20 +285,31 @@ public sealed class UpdateRecoveryTests : IDisposable
         var update = RunUpdater(onStarted: process => helper = process);
         string? recovery = null;
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        while (true)
+        try
         {
-            deadline.Token.ThrowIfCancellationRequested();
-            recovery = Directory.GetDirectories(Install, ".cpa-update-*").FirstOrDefault();
-            var path = recovery is null ? "" : Path.Combine(recovery, "state.json");
-            if (File.Exists(path))
+            while (true)
             {
-                using var state = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
-                if (state.RootElement.GetProperty("ProcessId").GetInt32() > 0) break;
+                deadline.Token.ThrowIfCancellationRequested();
+                recovery = Directory.GetDirectories(Install, ".cpa-update-*").FirstOrDefault();
+                var path = recovery is null ? "" : Path.Combine(recovery, "state.json");
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                        using var state = System.Text.Json.JsonDocument.Parse(stream);
+                        if (state.RootElement.GetProperty("ProcessId").GetInt32() > 0) break;
+                    }
+                    catch (IOException) { } // The journal can be atomically replaced while observed.
+                }
+                await Task.Delay(10, deadline.Token);
             }
-            await Task.Delay(10, deadline.Token);
         }
-        helper!.Kill(); // Only the updater dies; recovery must identify and stop its launched child.
-        await update;
+        finally
+        {
+            if (helper is { HasExited: false }) helper.Kill(); // Recovery must identify its child.
+            await update;
+        }
         Assert.True(File.Exists(Path.Combine(recovery!, "恢复旧版.cmd")));
         Assert.Equal("new readme", File.ReadAllText(Path.Combine(Install, "README.txt")));
         var result = await RunUpdater(recoveryDirectory: recovery);
@@ -328,7 +340,7 @@ public sealed class UpdateRecoveryTests : IDisposable
         return (process.ExitCode, await stdout + await stderr + (File.Exists(log) ? File.ReadAllText(log) : ""));
     }
 
-    private static CpaUpdateInfo Info => new() { TagName = "v9.0.0", NewVersion = new Version(9, 0, 0), AssetDownloadUrl = "https://example.invalid/update.zip", ReleaseUrl = "https://example.invalid/release", AssetSize = 0 };
+    private static CpaUpdateInfo Info(byte[] bytes) => new() { TagName = "v9.0.0", NewVersion = new Version(9, 0, 0), AssetDownloadUrl = "https://example.invalid/update.zip", ReleaseUrl = "https://example.invalid/release", ExpectedSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)), AssetSize = 0 };
     private static HttpClient Client(byte[] bytes, long? length = null) => new(new Handler(_ =>
     {
         var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
@@ -344,7 +356,7 @@ public sealed class UpdateRecoveryTests : IDisposable
     {
         using var stream = new MemoryStream();
         using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, true))
-            foreach (var (name, text) in entries) { using var writer = new StreamWriter(archive.CreateEntry(name).Open()); writer.Write(text); }
+            foreach (var (name, text) in entries) { var entry = archive.CreateEntry(name); entry.LastWriteTime = new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero); using var writer = new StreamWriter(entry.Open()); writer.Write(text); }
         return stream.ToArray();
     }
     public void Dispose() { StopProbe(); Directory.Delete(root, true); }

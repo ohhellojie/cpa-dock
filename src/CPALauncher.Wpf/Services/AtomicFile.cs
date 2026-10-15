@@ -5,6 +5,9 @@ namespace CPALauncher.Services;
 internal static class AtomicFile
 {
     internal static void WriteText(string path, string text, string? backup = null)
+        => WriteBytes(path, Encoding.UTF8.GetBytes(text), backup);
+
+    internal static void WriteBytes(string path, byte[] bytes, string? backup = null)
     {
         path = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -13,7 +16,6 @@ internal static class AtomicFile
         {
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
-                var bytes = Encoding.UTF8.GetBytes(text);
                 stream.Write(bytes);
                 stream.Flush(flushToDisk: true);
             }

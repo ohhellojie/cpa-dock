@@ -68,6 +68,7 @@ public sealed class CpaUpdateService
 
             var assetUrl = releaseUrl;
             long assetSize = 0;
+            string? expectedSha256 = null;
 
             if (requireWindowsAsset)
             {
@@ -91,6 +92,7 @@ public sealed class CpaUpdateService
                         assetSize = asset.TryGetProperty("size", out var sizeElement) && sizeElement.TryGetInt64(out var size)
                             ? size
                             : 0;
+                        expectedSha256 = await ReleaseChecksum.ResolveAsync(_httpClient, asset, assetsElement, ct);
                         break;
                     }
                 }
@@ -105,8 +107,13 @@ public sealed class CpaUpdateService
                 NewVersion = newVersion,
                 AssetDownloadUrl = assetUrl,
                 AssetSize = assetSize,
+                ExpectedSha256 = expectedSha256,
                 ReleaseUrl = releaseUrl,
             });
+        }
+        catch (InvalidDataException ex)
+        {
+            return CpaUpdateCheckResult.CheckFailed(ex.Message);
         }
         catch (Exception) when (!ct.IsCancellationRequested)
         {

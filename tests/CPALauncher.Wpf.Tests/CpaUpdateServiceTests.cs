@@ -20,6 +20,7 @@ public sealed class CpaUpdateServiceTests
                 {
                   "name": "cli-proxy-api-windows-amd64.zip",
                   "browser_download_url": "https://example.com/downloads/v1.2.4.zip",
+                  "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                   "size": 1048576
                 }
               ]
@@ -47,6 +48,7 @@ public sealed class CpaUpdateServiceTests
                 {
                   "name": "cli-proxy-api-windows-amd64.zip",
                   "browser_download_url": "https://example.com/downloads/v1.2.3.zip",
+                  "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                   "size": 2048
                 }
               ]
@@ -99,11 +101,13 @@ public sealed class CpaUpdateServiceTests
                 {
                   "name": "CPALauncher-win-x64-framework-dependent.zip",
                   "browser_download_url": "https://example.com/downloads/framework.zip",
+                  "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                   "size": 1024
                 },
                 {
                   "name": "CPALauncher-win-x64-self-contained.zip",
                   "browser_download_url": "https://example.com/downloads/self-contained.zip",
+                  "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                   "size": 4096
                 }
               ]

@@ -3,10 +3,11 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [IO.Compression.ZipFile]::OpenRead([IO.Path]::GetFullPath($ZipPath))
 try {
-    $expected = @('CPA Dock.exe', 'LICENSE.txt', 'THIRD-PARTY-LICENSES.txt', 'README.txt')
+    $ExecutableName = if ([IO.Path]::GetFileName($ZipPath).StartsWith('CPALauncher-', [StringComparison]::OrdinalIgnoreCase)) { 'CPALauncher.exe' } else { 'CPA Dock.exe' }
+    $expected = @($ExecutableName, 'LICENSE.txt', 'THIRD-PARTY-LICENSES.txt', 'README.txt')
     $actual = @($archive.Entries | ForEach-Object { $_.FullName })
     if (@(Compare-Object ($expected | Sort-Object) ($actual | Sort-Object)).Count -ne 0) { throw 'Package contains missing or unexpected files.' }
-    $entry = $archive.GetEntry('CPA Dock.exe')
+    $entry = $archive.GetEntry($ExecutableName)
     $stream = $entry.Open()
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $packedHash = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '') }

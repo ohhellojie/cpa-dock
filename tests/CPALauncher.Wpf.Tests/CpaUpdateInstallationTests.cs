@@ -74,21 +74,25 @@ public sealed class CpaUpdateInstallationTests : IDisposable
     {
         TagName = "v1.2.3", NewVersion = new Version(1, 2, 3),
         AssetDownloadUrl = "https://example.invalid/fixture.zip", ReleaseUrl = "https://example.invalid/release",
-        AssetSize = 0,
+        AssetSize = 0, ExpectedSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(PackageBytes())),
     };
 
-    private static HttpClient CreateClient()
+    private static HttpClient CreateClient() => new(new ZipHandler(PackageBytes()));
+
+    private static byte[] PackageBytes()
     {
         using var bytes = new MemoryStream();
         using (var zip = new ZipArchive(bytes, ZipArchiveMode.Create, leaveOpen: true))
         {
-            using (var writer = new StreamWriter(zip.CreateEntry("cli-proxy-api.exe").Open())) writer.Write("new binary");
-            using (var writer = new StreamWriter(zip.CreateEntry("config.example.yaml").Open())) writer.Write("sample");
-            using (var writer = new StreamWriter(zip.CreateEntry("config.yaml").Open())) writer.Write("package config");
-            using (var writer = new StreamWriter(zip.CreateEntry("credential.json").Open())) writer.Write("package credential");
+            using (var writer = new StreamWriter(Entry(zip, "cli-proxy-api.exe").Open())) writer.Write("new binary");
+            using (var writer = new StreamWriter(Entry(zip, "config.example.yaml").Open())) writer.Write("sample");
+            using (var writer = new StreamWriter(Entry(zip, "config.yaml").Open())) writer.Write("package config");
+            using (var writer = new StreamWriter(Entry(zip, "credential.json").Open())) writer.Write("package credential");
         }
-        return new HttpClient(new ZipHandler(bytes.ToArray()));
+        return bytes.ToArray();
     }
+
+    private static ZipArchiveEntry Entry(ZipArchive zip, string name) { var entry = zip.CreateEntry(name); entry.LastWriteTime = new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero); return entry; }
 
     private sealed class ZipHandler(byte[] bytes) : HttpMessageHandler
     {

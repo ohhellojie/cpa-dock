@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace CPALauncher.Services;
 
 public sealed class TokenImportService
@@ -83,8 +85,16 @@ public sealed class TokenImportService
 
             try
             {
+                var bytes = File.ReadAllBytes(sourceFile);
+                // Accept UTF-8 BOM without rewriting the imported credential's bytes.
+                var json = bytes.AsMemory(bytes.AsSpan().StartsWith(new byte[] { 0xef, 0xbb, 0xbf }) ? 3 : 0);
+                using var document = JsonDocument.Parse(json);
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                    throw new InvalidDataException("凭证内容必须是 JSON 对象。");
+                using var guard = new FileStream(targetPath + ".import-lock", FileMode.OpenOrCreate,
+                    FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
                 var willOverwrite = File.Exists(targetPath);
-                File.Copy(sourceFile, targetPath, overwrite: true);
+                AtomicFile.WriteBytes(targetPath, bytes, targetPath + ".bak");
 
                 if (willOverwrite)
                 {
@@ -96,7 +106,7 @@ public sealed class TokenImportService
             catch (Exception ex)
             {
                 failedCount++;
-                errors.Add($"导入 {fileName} 失败：{ex.Message}");
+                errors.Add($"导入 {fileName} 失败：{(ex is JsonException ? "JSON 格式无效，原文件未改动。" : ex.Message)}");
             }
         }
 
